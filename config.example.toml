@@ -1,0 +1,66 @@
+# timestral-abel configuration. Copy to config.toml and edit.
+# Every key is optional: missing keys (or a missing file) use the values below.
+# Set TIMESTRAL_ABEL_CONFIG to read the config from another path.
+
+# Where the API listens. The Docker healthcheck assumes 18320.
+listen_host = "0.0.0.0"
+listen_port = 18320
+
+# Users file with per-user API keys ([users.<id>] tables with name and key),
+# relative to the working directory (/app in the container). Re-read whenever
+# it changes.
+users_file  = "auth/users.toml"
+
+[model]
+# Hugging Face repo id, or a local directory with config.json + model.safetensors.
+id               = "mistralai/Timestral-209M"
+# Hub commit to load; ignored for a local directory.
+revision         = "9874d252ab0aae16f7f7c999f98f98d6ad7d8365"
+# Hugging Face cache (the ./models mount in the container).
+cache_dir        = "models"
+# true: never touch the network; the revision must already be in cache_dir.
+local_files_only = false
+# "cuda", or "cpu" (slow, but fine for trying it out).
+device           = "cuda"
+
+[batching]
+# Series per model call.
+max_batch_series = 16
+# Cap on series x rows x (padded context + horizon) per call, so memory stays
+# bounded; rows = 1 + covariate rows. A single series always runs.
+max_batch_cells  = 1200000
+# How long the GPU worker waits for other callers' series before running a
+# part-full batch.
+batch_wait_ms    = 5
+# Series waiting for the worker; a request that does not fit gets 503 + Retry-After.
+max_queue_series = 2048
+# Values (context + covariates, 4 bytes each) held by queued series: bounds the
+# queue's memory (64M values = 256 MB). Must be >= max_body_bytes / 2.
+max_queue_values = 67108864
+# Seconds a request may wait for its forecasts before it gets 503.
+request_timeout  = 900
+
+[limits]
+max_body_bytes         = 67108864  # 64 MiB
+max_series_per_request = 1024
+max_context            = 32768     # the model's trained context; cannot be raised
+max_prediction_length  = 2880
+max_covariates         = 32        # known + past covariate rows per series
+# series x prediction_length x (1 + quantiles asked for) per response (~10 bytes each).
+max_output_values      = 8000000
+# Requests parsing a body or encoding a response at once (~300 MB per 64 MiB body).
+max_parallel_parses    = 2
+# Open connections; more are closed on arrival.
+max_connections        = 64
+# Seconds a socket read or write may stall before the connection is closed.
+socket_timeout         = 60
+
+# One synthetic forecast of this shape runs before the service reports ready,
+# so CUDA kernels are loaded and the allocator holds a typical batch's memory.
+# series = 0 skips it.
+[warmup]
+series            = 16
+context           = 5376
+prediction_length = 96
+known_covariates  = 4
+past_covariates   = 1

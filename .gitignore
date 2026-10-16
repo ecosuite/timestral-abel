@@ -1,0 +1,19 @@
+# Local config (may point at private paths) and runtime data
+config.toml
+models/
+data/
+# API keys, if a local copy is used for testing
+auth/
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

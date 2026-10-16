@@ -1,0 +1,17 @@
+# The image only needs timestral_abel/; keep the build context small and never
+# send local config, keys or the (large) model cache to the daemon.
+.git
+.gitignore
+.dockerignore
+config.toml
+models/
+data/
+auth/
+*.key
+**/__pycache__
+**/*.py[cod]
+.venv
+venv
+tests/
+docs/
+uv.lock

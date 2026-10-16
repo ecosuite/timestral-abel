@@ -1,0 +1,61 @@
+services:
+  timestral:
+    build: .
+    image: timestral-abel:latest
+    container_name: timestral
+    # Host networking: the service listens on listen_port (18320) directly.
+    network_mode: host
+    # Creating the CUDA context can fail transiently when GPU memory is tight;
+    # the service then exits with status 75 and this restarts it.
+    restart: unless-stopped
+    # On SIGTERM the service answers queued requests with 503, finishes the
+    # current model call and lets open responses go out; 30 s covers that.
+    stop_grace_period: 30s
+    gpus: all
+    # The cap covers the process (about 2.5 GB warm) plus the bounded queue,
+    # parses and responses; CUDA allocations are not counted against it. On a
+    # host shared with other services, the raised OOM score makes the kernel
+    # kill this one (it restarts) before the others.
+    mem_limit: 8g
+    oom_score_adj: 500
+    # An unprivileged uid that can read the users file and write ./models.
+    user: "1000:1000"
+    environment:
+      # Grow and shrink CUDA memory in segments instead of fixed blocks: less
+      # fragmentation when batch shapes vary.
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+    volumes:
+      # Long syntax with create_host_path: false so a missing path fails loudly
+      # instead of Docker creating a root-owned directory in its place.
+      - type: bind
+        source: ./config.toml
+        target: /app/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      # Hugging Face cache: the pinned checkpoint is downloaded here once.
+      - type: bind
+        source: ./models
+        target: /app/models
+        bind:
+          create_host_path: false
+      # Directory holding users.toml (per-user API keys). A directory rather than
+      # the file, so edits that replace the file are seen without a restart.
+      - type: bind
+        source: ${TIMESTRAL_AUTH_DIR:-../spark-status/auth}
+        target: /app/auth
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18320/healthz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      # Model load and warm-up; longer if the checkpoint is still to be downloaded.
+      start_period: 300s
+      retries: 3
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
